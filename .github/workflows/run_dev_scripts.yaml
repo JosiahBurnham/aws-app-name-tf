@@ -1,0 +1,73 @@
+name: Run Dev Scripts
+
+on:
+  push:
+    branches:
+      - "master"
+      - "main"
+    paths:
+      - iac/dev/scripts/**
+
+env:
+  
+  TF_VAR_aws_role: ${{ secrets.DEV_ASSUME_ROLE }}
+
+permissions: write-all
+
+jobs:
+  GetModifiedFiles:
+    name: Get Modified Files
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout repo
+        uses: actions/checkout@v4
+
+      - name: Get Modified Files
+        id: modified-files
+        uses: tj-actions/changed-files@v41
+        with:
+          files_separator: ","
+          files: |
+            iac/dev/scripts/**
+
+    outputs:
+      matrix: ${{ steps.modified-files.outputs.all_changed_files }}
+
+  RunScript:
+    name: Run Script
+    runs-on: ubuntu-latest
+    needs: GetModifiedFiles
+    strategy:
+      matrix:
+        FUNCTIONS: ["${{needs.GetModifiedFiles.outputs.matrix}}", none]
+        exclude:
+          - FUNCTIONS: none
+
+    steps:
+      - name: checkout repo
+        uses: actions/checkout@v4
+
+      - name: configure aws credentials
+        uses: aws-actions/configure-aws-credentials@v1.7.0
+        with:
+          role-to-assume: ${{ secrets.DEV_ASSUME_ROLE }}
+          role-session-name: gh-actions-exe-role
+          aws-region: us-east-1
+
+      - name: Shell Linter
+        uses: azohra/shell-linter@v0.6.0
+        with:
+          path: "iac/dev/scripts/*.sh"
+
+      - name: run script
+        run: |   
+      
+          for file in ${{ matrix.FUNCTIONS }}; do
+            filename=`basename $file`
+            if [[ "$file" != 'none' ]]
+            then
+              bash ./$file
+              
+            fi
+          done
